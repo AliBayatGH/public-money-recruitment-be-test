@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using VacationRental.Api.Models;
 using VacationRental.Api.Services;
 
@@ -23,13 +19,13 @@ namespace VacationRental.Api.Controllers
         [Route("{rentalId:int}")]
         public RentalViewModel Get(int rentalId)
         {
-           return _rentalsService.GetRentalById(rentalId);
+            return _rentalsService.GetRentalById(rentalId);
         }
 
         [HttpPost]
         public ResourceIdViewModel Post(RentalBindingModel model)
         {
-           return _rentalsService.CreateRental(model);
+            return _rentalsService.CreateRental(model);
         }
 
         [HttpPut]
