@@ -11,7 +11,10 @@ namespace VacationRental.Api.Models
             get => _startIgnoreTime;
             set => _startIgnoreTime = value.Date;
         }
-
+        public DateTime End
+        {
+            get => Start.AddDays(Nights).Date;
+        }
         private DateTime _startIgnoreTime;
         public int Nights { get; set; }
     }
