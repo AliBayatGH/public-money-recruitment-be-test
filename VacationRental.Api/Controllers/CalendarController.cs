@@ -23,6 +23,11 @@ namespace VacationRental.Api.Controllers
         [HttpGet]
         public CalendarViewModel Get(int rentalId, DateTime start, int nights)
         {
+            return GetCalendar(rentalId, start, nights);
+        }
+
+        private CalendarViewModel GetCalendar(int rentalId, DateTime start, int nights)
+        {
             if (nights < 0)
                 throw new ApplicationException("Nights must be positive");
             if (!_rentals.ContainsKey(rentalId))
@@ -33,7 +38,6 @@ namespace VacationRental.Api.Controllers
                 RentalId = rentalId,
                 Dates = new List<CalendarDateViewModel>()
             };
-
             for (var i = 0; i < nights; i++)
             {
                 var date = new CalendarDateViewModel
@@ -46,13 +50,13 @@ namespace VacationRental.Api.Controllers
                 foreach (var booking in _bookings.Values)
                 {
                     if (booking.RentalId == rentalId
-                        && booking.Start <= date.Date && booking.Start.AddDays(booking.Nights) > date.Date)
+                        && booking.Start <= date.Date && booking.End > date.Date)
                     {
                         date.Bookings.Add(new CalendarBookingViewModel { Id = booking.Id, Unit = booking.Unit });
                     }
 
                     if (booking.RentalId == rentalId
-                        && booking.Start.AddDays(booking.Nights) <= date.Date && booking.Start.AddDays(booking.Nights).AddDays(_rentals[rentalId].PreparationTimeInDays) > date.Date)
+                        && booking.End <= date.Date && booking.End.AddDays(_rentals[rentalId].PreparationTimeInDays) > date.Date)
                     {
                         date.PreparationTimes.Add(new CalendarPreparationTimeViewModel { Unit = booking.Unit });
                     }

@@ -1,6 +1,6 @@
 ﻿using System;
-using System.Linq;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using VacationRental.Api.Models;
 
@@ -25,8 +25,7 @@ namespace VacationRental.Api.Controllers
         [Route("{bookingId:int}")]
         public BookingViewModel Get(int bookingId)
         {
-            if (!_bookings.ContainsKey(bookingId))
-                throw new ApplicationException("Booking not found");
+            GetBookingById(bookingId);
 
             return _bookings[bookingId];
         }
@@ -34,40 +33,28 @@ namespace VacationRental.Api.Controllers
         [HttpPost]
         public ResourceIdViewModel Post(BookingBindingModel model)
         {
+            return AddBooking(model);
+        }
+
+        private void GetBookingById(int bookingId)
+        {
+            if (!_bookings.ContainsKey(bookingId))
+                throw new ApplicationException("Booking not found");
+        }
+
+        private ResourceIdViewModel AddBooking(BookingBindingModel model)
+        {
             if (model.Nights <= 0)
                 throw new ApplicationException("Nigts must be positive");
             if (!_rentals.ContainsKey(model.RentalId))
                 throw new ApplicationException("Rental not found");
 
-            int existingUnit = 0;
-            for (var i = 0; i < model.Nights; i++)
-            {
-                List<BookingViewModel> bookingsWithConflict = new List<BookingViewModel>();
-                foreach (var booking in _bookings.Values)
-                {
-                    if (booking.RentalId == model.RentalId
-                                              && ((booking.Start <= model.Start.Date && booking.Start.AddDays(booking.Nights).Date.AddDays(_rentals[model.RentalId].PreparationTimeInDays) > model.Start.Date)
-                                                  || (booking.Start < model.Start.Date.AddDays(_rentals[model.RentalId].PreparationTimeInDays) && booking.Start.AddDays(booking.Nights).Date.AddDays(_rentals[model.RentalId].PreparationTimeInDays) >= model.Start.Date.AddDays(_rentals[model.RentalId].PreparationTimeInDays))
-                                                  || (booking.Start > model.Start.Date && booking.Start.AddDays(booking.Nights).Date.AddDays(_rentals[model.RentalId].PreparationTimeInDays) < model.Start.Date.AddDays(_rentals[model.RentalId].PreparationTimeInDays))))
-                    {
-                        bookingsWithConflict.Add(booking);
-                    }
-                }
+            var bookingsWithConflict = GetBookingsWithConflict(model.RentalId, model.Start, model.End, _rentals[model.RentalId].PreparationTimeInDays).ToList();
 
-                if (bookingsWithConflict.Count >= _rentals[model.RentalId].Units)
-                    throw new ApplicationException("Not available");
+            if (bookingsWithConflict.Count >= _rentals[model.RentalId].Units)
+                throw new ApplicationException("Not available");
 
-                if (_rentals[model.RentalId].Units > bookingsWithConflict.Count)
-                {
-                    var bookedRentalUnits = bookingsWithConflict.Select(booking => booking.Unit).Distinct().ToArray();
-
-                    for (var unit = 1; unit <= _rentals[model.RentalId].Units; unit++)
-                    {
-                        if (!bookedRentalUnits.Contains(unit))
-                            existingUnit = unit;
-                    }
-                }
-            }
+            var availableUnit = GetAvailableUnit(model.RentalId, bookingsWithConflict);
 
             var key = new ResourceIdViewModel { Id = _bookings.Keys.Count + 1 };
 
@@ -77,10 +64,42 @@ namespace VacationRental.Api.Controllers
                 Nights = model.Nights,
                 RentalId = model.RentalId,
                 Start = model.Start.Date,
-                Unit = existingUnit
+                Unit = availableUnit
             });
 
             return key;
+        }
+
+        private int GetAvailableUnit(int rentalId, List<BookingViewModel> overlappingBookings)
+        {
+            int availableUnit = 0;
+
+            if (_rentals[rentalId].Units > overlappingBookings.Count)
+            {
+                var bookedRentalUnits = overlappingBookings.Select(booking => booking.Unit).Distinct().ToArray();
+
+                for (var unit = 1; unit <= _rentals[rentalId].Units; unit++)
+                {
+                    if (!bookedRentalUnits.Contains(unit))
+                        availableUnit = unit;
+                }
+            }
+
+            return availableUnit;
+        }
+
+        private IEnumerable<BookingViewModel> GetBookingsWithConflict(int rentalId, DateTime start, DateTime end, int preparationDays)
+        {
+            foreach (var booking in _bookings.Values)
+            {
+                if (booking.RentalId == rentalId
+                                        && ((booking.Start <= start && booking.End.AddDays(preparationDays) > start)
+                                            || (booking.Start < end.AddDays(preparationDays) && booking.End.AddDays(preparationDays) >= end.AddDays(preparationDays))
+                                            || (booking.Start > start && booking.End.AddDays(preparationDays) < end.AddDays(preparationDays))))
+                {
+                    yield return booking;
+                }
+            }
         }
     }
 }

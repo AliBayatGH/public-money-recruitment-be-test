@@ -1,7 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Collections.Generic;
 using Microsoft.AspNetCore.Mvc;
 using VacationRental.Api.Models;
 
@@ -24,14 +24,24 @@ namespace VacationRental.Api.Controllers
         [Route("{rentalId:int}")]
         public RentalViewModel Get(int rentalId)
         {
-            if (!_rentals.ContainsKey(rentalId))
-                throw new ApplicationException("Rental not found");
+            GetRentalById(rentalId);
 
             return _rentals[rentalId];
         }
 
+        private void GetRentalById(int rentalId)
+        {
+            if (!_rentals.ContainsKey(rentalId))
+                throw new ApplicationException("Rental not found");
+        }
+
         [HttpPost]
         public ResourceIdViewModel Post(RentalBindingModel model)
+        {
+           return CreateRental(model);
+        }
+
+        private ResourceIdViewModel CreateRental(RentalBindingModel model)
         {
             var key = new ResourceIdViewModel { Id = _rentals.Keys.Count + 1 };
 
@@ -41,39 +51,50 @@ namespace VacationRental.Api.Controllers
                 Units = model.Units,
                 PreparationTimeInDays = model.PreparationTimeInDays
             });
-
             return key;
         }
-
 
         [HttpPut]
         [Route("{rentalId:int}")]
         public IActionResult Update(int rentalId, RentalBindingModel model)
         {
+            UpdateRental(rentalId, model);
+
+            return NoContent();
+        }
+
+        private void UpdateRental(int rentalId, RentalBindingModel model)
+        {
             if (!_rentals.ContainsKey(rentalId))
-                return NotFound("Rental not found");
+                throw new ApplicationException("Rental not found");
 
             var rental = _rentals[rentalId];
 
+            if (rental.Units != model.Units || rental.PreparationTimeInDays != model.PreparationTimeInDays)
+            {
+                var bookingsWithConflict = GetBookingsWithConflict(rentalId, DateTime.Now.Date, DateTime.MaxValue.AddDays(-model.PreparationTimeInDays), model.PreparationTimeInDays);
 
-            if (!(rental.Units != model.Units || rental.PreparationTimeInDays != model.PreparationTimeInDays))
-                return NoContent();
+                var CanRentalBeUpdated = bookingsWithConflict.ToList().Count <= model.Units;
+                if (!CanRentalBeUpdated)
+                    throw new ApplicationException("Rental can not be updated");
 
-            var bookingsWithConflict = _bookings
-                .Where(booking =>
-                    booking.Value.RentalId == rentalId
-                    && ((booking.Value.Start <= DateTime.Now.Date && booking.Value.Start.AddDays(booking.Value.Nights).Date.AddDays(model.PreparationTimeInDays) > DateTime.Now.Date)
-                        || (booking.Value.Start < DateTime.MaxValue.AddDays(-model.PreparationTimeInDays).AddDays(model.PreparationTimeInDays) && booking.Value.Start.AddDays(booking.Value.Nights).Date.AddDays(model.PreparationTimeInDays) >= DateTime.MaxValue.AddDays(-model.PreparationTimeInDays).AddDays(model.PreparationTimeInDays))
-                        || (booking.Value.Start > DateTime.Now.Date && booking.Value.Start.AddDays(booking.Value.Nights).Date.AddDays(model.PreparationTimeInDays) < DateTime.MaxValue.AddDays(-model.PreparationTimeInDays).AddDays(model.PreparationTimeInDays))));
+                rental.Units = model.Units;
+                rental.PreparationTimeInDays = model.PreparationTimeInDays;
+            }
+        }
 
-            var CanRentalBeUpdated = bookingsWithConflict.ToList().Count <= model.Units;
-            if (!CanRentalBeUpdated)
-                return Conflict("Rental can not be updated");
-
-            rental.Units = model.Units;
-            rental.PreparationTimeInDays = model.PreparationTimeInDays;
-
-            return NoContent();
+        private IEnumerable<BookingViewModel> GetBookingsWithConflict(int rentalId, DateTime start, DateTime end, int preparationDays)
+        {
+            foreach (var booking in _bookings.Values)
+            {
+                if (booking.RentalId == rentalId
+                                        && ((booking.Start <= start && booking.End.AddDays(preparationDays) > start)
+                                            || (booking.Start < end.AddDays(preparationDays) && booking.End.AddDays(preparationDays) >= end.AddDays(preparationDays))
+                                            || (booking.Start > start && booking.End.AddDays(preparationDays) < end.AddDays(preparationDays))))
+                {
+                    yield return booking;
+                }
+            }
         }
     }
 }
